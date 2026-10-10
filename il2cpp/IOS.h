@@ -11,4 +11,3 @@ bool ReadAssetToBuffer(
 
 inline std::string InternalPath;
 inline std::string ExternalPath;
-std::string GetApplicationSupportPath();
