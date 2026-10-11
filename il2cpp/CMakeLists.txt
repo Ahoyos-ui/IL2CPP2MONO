@@ -46,7 +46,7 @@ else()
             monosgen-2.0
     )
 endif ()
-target_link_libraries(il2cpp PRIVATE fmt::fmt)
+target_link_libraries(il2cpp PRIVATE fmt::fmt-header-only)
 target_include_directories(il2cpp PRIVATE
         ${CMAKE_SOURCE_DIR}/include
 )
