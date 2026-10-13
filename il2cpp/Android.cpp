@@ -1,15 +1,12 @@
-#pragma once
 #include <vector>
 #include <android/log.h>
 #include <android/asset_manager_jni.h>
 #include "android/asset_manager.h"
-
+#include "Platform.h"
 static jclass ActivityThreadClass = NULL;
 static jclass ContextClass = NULL;
 static jclass FileClass = NULL;
 static JavaVM* JVM = NULL;
-static const char* InternalPath;
-static const char* ExternalPath;
 static AAssetManager* AssetManager = nullptr;
 static AAssetManager* GetAssetManager(JNIEnv* env, jobject Context) {
     jmethodID getAssetsMid = env->GetMethodID(ContextClass, "getAssets", "()Landroid/content/res/AssetManager;");
@@ -66,7 +63,7 @@ static int Init(JNIEnv* env) {
 
     return 1;
 }
-static bool ReadAssetToBuffer(const char* assetPath, std::vector<uint8_t>& outBuf) {
+bool ReadAssetToBuffer(const char* assetPath, std::vector<uint8_t>& outBuf) {
     AAsset* asset = AAssetManager_open(AssetManager, assetPath, AASSET_MODE_BUFFER);
     if (!asset) {
         LOGE("Failed to open asset: %s", assetPath);

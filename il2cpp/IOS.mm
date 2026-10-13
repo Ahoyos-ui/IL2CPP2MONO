@@ -1,5 +1,5 @@
 #import <Foundation/Foundation.h>
-#include "IOS.h"
+#include "Platform.h"
 #include <cstdint>
 #include <cstring>
 #include <string>

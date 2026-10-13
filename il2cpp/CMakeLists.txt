@@ -13,6 +13,7 @@ if(ANDROID)
     add_library(il2cpp SHARED
             include/miniz/miniz.c
             il2cpp-api.cpp
+            Android.cpp
     )
     target_link_directories(il2cpp PRIVATE
             ${CMAKE_SOURCE_DIR}/libs/android/${ANDROID_ABI}

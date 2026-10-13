@@ -7,11 +7,7 @@
 #include <format>
 #include "Utils.cpp"
 #include "MonoUtils.cpp"
-#if ANDROID
-#include "Android.cpp"
-#else
-#include "IOS.h"
-#endif
+#include "Platform.h"
 #define LOGW(...) log_format(LOG_WARN, "IL2CPP", __VA_ARGS__)
 #define LOGI(...) log_format(LOG_INFO, "IL2CPP", __VA_ARGS__)
 static std::string DllPath;

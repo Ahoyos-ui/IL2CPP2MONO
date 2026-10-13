@@ -161,7 +161,7 @@ const Il2CppAssembly* il2cpp_domain_assembly_open(Il2CppDomain* domain, const ch
     std::string path = fmt::format("{}/{}", DllPath, name);
     MonoAssembly* asm_ = mono_domain_assembly_open((MonoDomain*)domain, path.c_str());
     if (!asm_) {
-        LOGW("missing assembly %s", path.c_str());
+        LOGW("missing assembly {}", path.c_str());
     }
     return reinterpret_cast<Il2CppAssembly *>(asm_);
 }
@@ -1133,12 +1133,12 @@ void il2cpp_gc_foreach_heap(void(*func)(void* data, void* context), void* userDa
 void il2cpp_stop_gc_world()
 {
     LOGCALL2();
-    //LOGW("warning: il2cpp_stop_gc_world is not supported in boehm GC");
+
 }
 
 void il2cpp_start_gc_world()
 { LOGCALL2();
-    //LOGW("warning: il2cpp_start_gc_world is not supported in boehm GC");
+  
 }
 
 void* il2cpp_gc_alloc_fixed(size_t size)
@@ -1243,7 +1243,54 @@ void* il2cpp_unity_liveness_allocate_struct(Il2CppClass* filter, int max_object_
 
     return state;
 }
+void* il2cpp_unity_liveness_calculation_begin(Il2CppClass* filter, int max_object_count,
+                                              il2cpp_register_object_callback callback, void* userdata,
+                                              il2cpp_WorldChangedCallback onWorldStarted,
+                                              il2cpp_WorldChangedCallback onWorldStopped)
+{
+    LOGCALL();
+    auto* state = static_cast<Il2CppLivenessState*>(std::calloc(1, sizeof(Il2CppLivenessState)));
 
+    state->register_callback = callback;
+    state->onWorldStarted    = onWorldStarted;
+    state->onWorldStopped    = onWorldStopped;
+    state->il2cpp_userdata   = userdata;
+
+    state->mono_state = mono_unity_liveness_allocate_struct(
+        filter->original,
+        static_cast<guint>(max_object_count),
+        liveness_register_trampoline,
+        state,
+        liveness_reallocate_trampoline_legacy);
+
+    if (!state->mono_state)
+    {
+        std::free(state);
+        return nullptr;
+    }
+
+    onWorldStopped();
+    il2cpp_stop_gc_world();
+    return state;
+}
+void il2cpp_unity_liveness_free_struct(Il2CppLivenessState* state)
+{ LOGCALL();
+    mono_unity_liveness_free_struct(state->mono_state);
+    std::free(state);
+}
+void il2cpp_unity_liveness_calculation_end(void* state)
+{
+    LOGCALL();
+    auto* lstate = static_cast<Il2CppLivenessState*>(state);
+    il2cpp_WorldChangedCallback onWorldStarted = lstate->onWorldStarted;
+
+    mono_unity_liveness_finalize(lstate->mono_state);
+    il2cpp_start_gc_world();
+    onWorldStarted();
+
+    mono_unity_liveness_free_struct(lstate->mono_state);
+    std::free(lstate);
+}
 void il2cpp_unity_liveness_calculation_from_root(Il2CppObject* root, Il2CppLivenessState* state)
 { LOGCALL();
    mono_unity_liveness_calculation_from_root((MonoObject*)root, state->mono_state);
@@ -1257,12 +1304,6 @@ void il2cpp_unity_liveness_calculation_from_statics(Il2CppLivenessState* state)
 void il2cpp_unity_liveness_finalize(Il2CppLivenessState* state)
 { LOGCALL();
    mono_unity_liveness_finalize(state->mono_state);
-}
-
-void il2cpp_unity_liveness_free_struct(Il2CppLivenessState* state)
-{ LOGCALL();
-   mono_unity_liveness_free_struct(state->mono_state);
-    std::free(state);
 }
 
 // method

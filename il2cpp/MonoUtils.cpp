@@ -4,7 +4,7 @@
 #include "mono/metadata/assembly.h"
 #include "mono/metadata/object-forward.h"
 #include "mono/metadata/object.h"
-#include "mono/utils/mono-publib.h"
+#include <sys/mman.h>
 #include "mono/metadata/appdomain.h"
 #include <mono/metadata/threads.h>
 #include <mutex>
@@ -36,7 +36,29 @@ static void liveness_register_trampoline(
         size,
         bridge->il2cpp_userdata);
 }
+static void* liveness_reallocate_trampoline_legacy(void* ptr, int size, void* /*userdata*/)
+{
+    constexpr size_t kHeader = 16;                 // keeps the returned block 16-byte aligned
 
+    if (size == 0)
+    {
+        if (ptr)
+        {
+            char* base = static_cast<char*>(ptr) - kHeader;
+            munmap(base, *reinterpret_cast<size_t*>(base));
+        }
+        return nullptr;
+    }
+
+    const size_t total = static_cast<size_t>(size) + kHeader;
+    void* base = mmap(nullptr, total, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (base == MAP_FAILED)
+        return nullptr;
+
+    *static_cast<size_t*>(base) = total;           // remember the mapping length for the free
+    return static_cast<char*>(base) + kHeader;
+}
 static void* liveness_reallocate_trampoline(
     void* ptr,
     int size,

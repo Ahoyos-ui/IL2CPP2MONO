@@ -51,7 +51,7 @@ static bool ExtractZipBuffer(const std::vector<uint8_t>& zipData, const std::str
         }
 
         if (!mz_zip_reader_extract_to_file(&zip, i, outPath.c_str(), 0)) {
-            LOGE("Failed to extract: %s", stat.m_filename);
+            LOGE("Failed to extract: {}", stat.m_filename);
         }
     }
 
