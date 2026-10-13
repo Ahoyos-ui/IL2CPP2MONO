@@ -48,9 +48,6 @@ jobs:
         shell: bash
         run: |   
           set -x
-          git -C my-repo log -1 --oneline
-          ls -la my-repo/mono/Scripts/
-          grep -n "print\|logging" my-repo/mono/Scripts/Android.py || echo "no logging in checked-out copy"
           python3 -u my-repo/mono/Scripts/Android.py
       
       - name: Build Unity Mono ARM64 Android
