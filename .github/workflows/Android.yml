@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run:    
           set -e
-          python3 my-repo/mono/Scripts/Android.py
+          python3 -u my-repo/mono/Scripts/Android.py
           
           echo "===== android.mk GC configuration ====="
           grep -nE 'enable-boehm|disable-boehm|with-sgen' \
@@ -58,7 +58,7 @@ jobs:
           grep -n -A2 -B1 \
           'libmonoruntimesgen_la_SOURCES' \
           mono/metadata/Makefile.am
-          
+      
       - name: Build Unity Mono ARM64 Android
         shell: bash
         run: |
