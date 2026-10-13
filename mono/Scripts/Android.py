@@ -41,13 +41,3 @@ if old not in text:
 
 text = text.replace(old, new, 1)
 path.write_text(text)
-PY
-
-echo "===== android.mk GC configuration ====="
-grep -nE 'enable-boehm|disable-boehm|with-sgen' \
-sdks/builds/android.mk
-
-echo "===== SGen liveness configuration ====="
-grep -n -A2 -B1 \
-'libmonoruntimesgen_la_SOURCES' \
-mono/metadata/Makefile.am
