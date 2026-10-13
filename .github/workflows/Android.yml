@@ -46,7 +46,7 @@ jobs:
           
       - name: Configure Mono for SGen GC and Unity liveness
         shell: bash
-        run:    
+        run: |   
           set -x
           git -C my-repo log -1 --oneline
           ls -la my-repo/mono/Scripts/
