@@ -34,17 +34,6 @@
   <component name="ChangeListManager">
     <list default="true" id="ea61becb-896d-40df-9f05-78f9a2610ec6" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Android.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Android.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/IOS.h" beforeDir="false" afterPath="$PROJECT_DIR$/Platform.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/IOS.mm" beforeDir="false" afterPath="$PROJECT_DIR$/IOS.mm" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/MonoUtils.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/MonoUtils.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Utils.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/Utils.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/il2cpp-api-types.h" beforeDir="false" afterPath="$PROJECT_DIR$/il2cpp-api-types.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/il2cpp-api.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/il2cpp-api.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mono/metadata/mono-gc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mono/metadata/mono-gc.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mono/metadata/unity-liveness.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mono/metadata/unity-liveness.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/main.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -236,7 +225,7 @@
       <workItem from="1791638667234" duration="1726000" />
       <workItem from="1791640630636" duration="1568000" />
       <workItem from="1791647169806" duration="7911000" />
-      <workItem from="1791824605121" duration="5104000" />
+      <workItem from="1791824605121" duration="5492000" />
     </task>
     <servers />
   </component>
