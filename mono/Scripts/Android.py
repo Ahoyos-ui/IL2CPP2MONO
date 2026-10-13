@@ -1,6 +1,9 @@
 from pathlib import Path
 
 path = Path("mono/metadata/mono-gc.h")
+print("Working directory:", Path.cwd())
+print("Target file:", path.resolve())
+print("File exists:", path.is_file())
 text = path.read_text()
 
 old = """void mono_gc_stop_world (void);
