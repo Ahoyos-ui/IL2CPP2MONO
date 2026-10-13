@@ -1,5 +1,21 @@
 from pathlib import Path
 
+path = Path("mono/metadata/mono-gc.h")
+text = path.read_text()
+
+old = """void mono_gc_stop_world (void);
+
+void mono_gc_restart_world (void);"""
+
+new = """MONO_API void mono_gc_stop_world (void);
+
+MONO_API void mono_gc_restart_world (void);"""
+
+if old not in text:
+    raise RuntimeError("Could not find GC world-stop declarations")
+
+path.write_text(text.replace(old, new, 1))
+
 path = Path("sdks/builds/android.mk")
 text = path.read_text()
 
