@@ -7,7 +7,8 @@ old = "void mono_gc_stop_world (void);"
 new = "MONO_API void mono_gc_stop_world (void);"
 if old not in text:
     raise RuntimeError("Could not find GC world-stop declarations")
-path.write_text(text.replace(old, new, 1))
+text = text.replace(old, new, 1)
+path.write_text(text)
 
 old = "void mono_gc_restart_world (void);"
 new = "MONO_API void mono_gc_restart_world (void);"
