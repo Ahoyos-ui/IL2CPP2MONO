@@ -11,10 +11,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Check out my repo
-        uses: actions/checkout@v4
-        with:
-          path: my-repo
       - name: Check out Unity Mono
         uses: actions/checkout@v4
         with:
@@ -22,7 +18,10 @@ jobs:
           ref: unity-2022.3-mbe
           submodules: recursive
           fetch-depth: 1
-
+      - name: Check out my repo
+        uses: actions/checkout@v4
+        with:
+          path: my-repo
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -48,6 +47,14 @@ jobs:
       - name: Configure Mono for SGen GC and Unity liveness
         shell: bash
         run: |
+          
+          echo "workspace: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          echo "--- my-repo ---"
+          ls -la "$GITHUB_WORKSPACE/my-repo" || true
+          echo "--- find Android.py ---"
+          find "$GITHUB_WORKSPACE" -iname 'Android.py' -not -path '*/unity-mono/*' 2>/dev/null
+          
           set -e
           python3 "$GITHUB_WORKSPACE/my-repo/mono/Scripts/Android.py"
             
