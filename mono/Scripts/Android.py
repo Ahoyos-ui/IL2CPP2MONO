@@ -1,7 +1,6 @@
 from pathlib import Path
 
 def edit(path, old, new):
-  path = Path(path)
   text = path.read_text()
   if text.count(old) != 1:
       raise RuntimeError(f"{path}: expected exactly one match for {old!r}")
