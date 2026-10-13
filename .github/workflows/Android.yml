@@ -48,6 +48,14 @@ jobs:
       - name: Configure Mono for SGen GC and Unity liveness
         shell: bash
         run: |
+          
+          echo "workspace: $GITHUB_WORKSPACE"
+          ls -la "$GITHUB_WORKSPACE"
+          echo "--- my-repo ---"
+          ls -la "$GITHUB_WORKSPACE/my-repo" || true
+          echo "--- find Android.py ---"
+          find "$GITHUB_WORKSPACE" -iname 'Android.py' -not -path '*/unity-mono/*' 2>/dev/null
+          
           set -e
           python3 "$GITHUB_WORKSPACE/my-repo/mono/Scripts/Android.py"
             
