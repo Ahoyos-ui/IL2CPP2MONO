@@ -11,10 +11,6 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Check out my repo
-        uses: actions/checkout@v4
-        with:
-          path: my-repo
       - name: Check out Unity Mono
         uses: actions/checkout@v4
         with:
@@ -22,7 +18,10 @@ jobs:
           ref: unity-2022.3-mbe
           submodules: recursive
           fetch-depth: 1
-
+      - name: Check out my repo
+        uses: actions/checkout@v4
+        with:
+          path: my-repo
       - name: Install build dependencies
         run: |
           sudo apt-get update
