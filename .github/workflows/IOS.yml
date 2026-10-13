@@ -27,10 +27,6 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Check out my repo
-        uses: actions/checkout@v4
-        with:
-          path: my-repo
       - name: Check out Unity Mono
         uses: actions/checkout@v4
         with:
@@ -38,7 +34,10 @@ jobs:
           ref: unity-2022.3-mbe
           submodules: recursive
           fetch-depth: 1
-
+      - name: Check out my repo
+        uses: actions/checkout@v4
+        with:
+          path: my-repo
       - name: Install build dependencies
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -58,9 +57,9 @@ jobs:
         run: |
           set -e
 
-          cp "$GITHUB_WORKSPACE/my-repo/mono/Scripts/IOS-JIT.cpp" mono/utils/mono-ios-jit.h
+          cp my-repo/mono/Scripts/IOS-JIT.cpp mono/utils/mono-ios-jit.h
           
-          python3 "$GITHUB_WORKSPACE/my-repo/mono/Scripts/IOS.py"
+          python3 my-repo/mono/Scripts/IOS.py
 
           echo "===== ios.mk device configuration ====="
           grep -nE 'enable-minimal|icall-tables|lazy-gc|enable-boehm|disable-boehm' \
