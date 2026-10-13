@@ -1132,13 +1132,13 @@ void il2cpp_gc_foreach_heap(void(*func)(void* data, void* context), void* userDa
 
 void il2cpp_stop_gc_world()
 {
-    LOGCALL2();
-
+    LOGCALL();
+    mono_gc_stop_world();
 }
 
 void il2cpp_start_gc_world()
-{ LOGCALL2();
-  
+{ LOGCALL();
+    mono_gc_restart_world();
 }
 
 void* il2cpp_gc_alloc_fixed(size_t size)
@@ -1270,7 +1270,7 @@ void* il2cpp_unity_liveness_calculation_begin(Il2CppClass* filter, int max_objec
     }
 
     onWorldStopped();
-    il2cpp_stop_gc_world();
+    mono_gc_stop_world();
     return state;
 }
 void il2cpp_unity_liveness_free_struct(Il2CppLivenessState* state)
@@ -1285,7 +1285,7 @@ void il2cpp_unity_liveness_calculation_end(void* state)
     il2cpp_WorldChangedCallback onWorldStarted = lstate->onWorldStarted;
 
     mono_unity_liveness_finalize(lstate->mono_state);
-    il2cpp_start_gc_world();
+    mono_gc_restart_world();
     onWorldStarted();
 
     mono_unity_liveness_free_struct(lstate->mono_state);
