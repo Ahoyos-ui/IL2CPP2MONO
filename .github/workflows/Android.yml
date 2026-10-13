@@ -48,7 +48,7 @@ jobs:
         shell: bash
         run:    
           set -e
-          python3 "$GITHUB_WORKSPACE/my-repo/mono/Scripts/Android.py"
+          python3 my-repo/mono/Scripts/Android.py
           
           echo "===== android.mk GC configuration ====="
           grep -nE 'enable-boehm|disable-boehm|with-sgen' \
