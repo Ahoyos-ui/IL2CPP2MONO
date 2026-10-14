@@ -32,12 +32,7 @@
     </configurations>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ea61becb-896d-40df-9f05-78f9a2610ec6" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/il2cpp-api.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/il2cpp-api.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/include/mono/metadata/mono-gc.h" beforeDir="false" afterPath="$PROJECT_DIR$/include/mono/metadata/mono-gc.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/libs/android/arm64-v8a/libmonosgen-2.0.so" beforeDir="false" afterPath="$PROJECT_DIR$/libs/android/arm64-v8a/libmonosgen-2.0.so" afterDir="false" />
-    </list>
+    <list default="true" id="ea61becb-896d-40df-9f05-78f9a2610ec6" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -169,6 +164,11 @@
     </key>
   </component>
   <component name="RunManager" selected="CMake Application.il2cpp">
+    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+      <method v="2">
+        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+      </method>
+    </configuration>
     <configuration name="fmt-c" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="il2cpp" TARGET_NAME="fmt-c" CONFIG_NAME="Android">
       <method v="2">
         <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
@@ -228,7 +228,7 @@
       <workItem from="1791638667234" duration="1726000" />
       <workItem from="1791640630636" duration="1568000" />
       <workItem from="1791647169806" duration="7911000" />
-      <workItem from="1791824605121" duration="7452000" />
+      <workItem from="1791824605121" duration="7695000" />
     </task>
     <servers />
   </component>
