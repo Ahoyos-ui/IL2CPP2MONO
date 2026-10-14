@@ -9,9 +9,6 @@ def edit(path, old, new):
       raise RuntimeError(f"{path}: expected exactly one match for {old!r}")
   path.write_text(text.replace(old, new))
 
-path = "mono/metadata/mono-gc.h"
-edit(path, "void mono_gc_stop_world (void);", "MONO_API void mono_gc_stop_world (void);")
-edit(path, "void mono_gc_restart_world (void);", "MONO_API void mono_gc_restart_world (void);")
 # ---------------------------------------------------------------
 # Build configuration
 # ---------------------------------------------------------------
