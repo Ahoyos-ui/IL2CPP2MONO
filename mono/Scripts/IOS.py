@@ -12,6 +12,9 @@ def edit(path, old, new):
 # ---------------------------------------------------------------
 # Build configuration
 # ---------------------------------------------------------------
+path = mono/metadata/mono-gc.h"
+edit(path, "void mono_gc_stop_world (void);", "MONO_API void mono_gc_stop_world (void);")
+edit(path, "void mono_gc_restart_world (void);", "MONO_API void mono_gc_restart_world (void);")
 
 ios_mk = "sdks/builds/ios.mk"
 
