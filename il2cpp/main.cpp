@@ -49,7 +49,7 @@ int InitMono(const char* domain_name) {
         LOGE("mono_jit_init_version failed — corlib likely not found, check managed path");
         return -1;
     }
-    LOGI("Mono initialized, domain = %p", (void*)Domain);
+    LOGI("Mono initialized, domain = {}", (void*)Domain);
     IsMonoReady = true;
     LoadInterceptors();
     FlushICallQueue();
