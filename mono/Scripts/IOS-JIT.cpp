@@ -81,6 +81,8 @@ static IosJitBlock *ios_jit_free_blocks;
 /* The sizes of the blocks handed out by ios_jit_malloc (). */
 static GHashTable *ios_jit_malloc_sizes;
 static volatile int ios_jit_brk_skipped;
+/* How many times the region has been set up; should never exceed one. */
+static int ios_jit_pool_init_count;
 
 /*
 * On devices with TXM (iOS 26 and later) a page only becomes executable
@@ -159,6 +161,18 @@ ios_jit_debugger_attached (void)
   return sysctl (mib, 4, &info, &size, NULL, 0) == 0 && (info.kp_proc.p_flag & P_TRACED);
 }
 
+/* The major iOS version, e.g. 18 or 26; 0 if it cannot be read. */
+static int
+ios_major_version (void)
+{
+  char buf [64] = { 0 };
+  size_t len = sizeof (buf) - 1;
+
+  if (sysctlbyname ("kern.osproductversion", buf, &len, NULL, 0) != 0)
+      return 0;
+  return atoi (buf);
+}
+
 /*
 * How many of the SIZE bytes at ADDR are mapped executable, without a gap.
 * All the map entries in the range are checked: the debugger can hand out
@@ -203,21 +217,41 @@ ios_jit_pool_init (void)
   void *rx = NULL;
   int i;
 
-  /* JIT enablers attach after the process has started. */
+  g_message ("ios_jit: pool_init entry #%d (rx=%p)", ++ios_jit_pool_init_count, mono_ios_jit_rx);
+
+  /*
+   * JIT enablers attach after the process has started. The whole of mono
+   * init runs on the main thread during app launch, so this has to finish
+   * well inside the ~5s background watchdog; 3s, then fail with a message
+   * instead of blocking until the watchdog kills the process silently.
+   */
   for (i = 0; !ios_jit_enabled (); ++i) {
-      if (i == 150)
-          g_error ("JIT is not enabled for this process (CS_DEBUGGED is not set), use a JIT enabler such as StikDebug.");
+      if (i == 30)
+          g_error ("JIT is not enabled for this process (CS_DEBUGGED is not set) after 3s, use a JIT enabler such as StikDebug.");
+      if (i && i % 10 == 0)
+          g_message ("ios_jit: still waiting for CS_DEBUGGED (%d)", i);
       usleep (100 * 1000);
   }
-  /* Plain enablers detach right away, the ones running a script stay. */
-  usleep (300 * 1000);
+  g_message ("ios_jit: CS_DEBUGGED set after %d polls, iOS %d, debugger %sattached", i, ios_major_version (), ios_jit_debugger_attached () ? "" : "not ");
 
-  for (i = 0; i < 3 && !rx && ios_jit_debugger_attached (); ++i) {
-      rx = ios_jit_debugger_request (FALSE, size);
-      executable = ios_jit_executable_size (rx, size);
-      if (!executable) {
-          rx = NULL;
-          usleep (100 * 1000);
+  /*
+   * Only TXM (iOS 26 and later) needs the region to come from the
+   * debugger, through a StikDebug script that services brk #0xf00d.
+   * Before that, mmap below gives executable memory directly, so the
+   * brk is skipped: on those devices the debugger has no brk handler,
+   * and firing brk into the attached debugger just risks a hang.
+   */
+  if (ios_major_version () >= 26) {
+      /* Plain enablers detach right away, the ones running a script stay. */
+      usleep (300 * 1000);
+
+      for (i = 0; i < 3 && !rx && ios_jit_debugger_attached (); ++i) {
+          rx = ios_jit_debugger_request (FALSE, size);
+          executable = ios_jit_executable_size (rx, size);
+          if (!executable) {
+              rx = NULL;
+              usleep (100 * 1000);
+          }
       }
   }
   from_debugger = rx != NULL;
