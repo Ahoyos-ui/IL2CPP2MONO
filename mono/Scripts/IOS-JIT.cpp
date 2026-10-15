@@ -237,6 +237,7 @@ ios_jit_pool_init (void)
 static gpointer
 ios_jit_alloc (gsize size)
 {
+  g_message("attempting to allocate %d JIT mem", (int)size);
   IosJitBlock *block, *before = NULL;
   gpointer res = NULL;
 
