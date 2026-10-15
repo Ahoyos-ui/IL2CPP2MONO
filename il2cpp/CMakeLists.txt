@@ -39,13 +39,6 @@ else()
             z
             iconv
     )
-    target_link_directories(il2cpp PRIVATE
-            ${CMAKE_SOURCE_DIR}/libs/ios/${CMAKE_OSX_ARCHITECTURES}
-    )
-
-    target_link_libraries(il2cpp PRIVATE
-            monosgen-2.0
-    )
 endif ()
 target_link_libraries(il2cpp PRIVATE fmt::fmt-header-only)
 target_include_directories(il2cpp PRIVATE
