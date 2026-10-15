@@ -2,9 +2,15 @@ import re
 from pathlib import Path
 
 
-def edit(path, old, new):
+def edit(path, old, new, optional=False):
   path = Path(path)
   text = path.read_text()
+  # Stop the build when the source no longer matches, instead of
+  # building a runtime that is missing the change.
+  if old not in text:
+    if optional:
+      return
+    raise RuntimeError(f"{path}: text to replace not found: {old!r}")
   path.write_text(text.replace(old, new))
 
 # ---------------------------------------------------------------
@@ -120,10 +126,12 @@ for name in ("mono_icall_sig_bool_ptr_int32_ptrref", "mono_icall_sig_bool_ptr_pt
 
 # Storing a pointer into an integer and assigning a function to
 # a pointer of another type were warnings and are errors now.
+# unity-main already casts the PC here.
 edit(
   "mono/utils/mono-sigcontext.h",
   "\tUCONTEXT_REG_PC (ctx) = (val); \\\n",
   "\tUCONTEXT_REG_PC (ctx) = (host_mgreg_t)(val); \\\n",
+  optional=True,
 )
 edit(
   "mono/mini/debugger-agent.c",
@@ -142,8 +150,9 @@ edit(
 # ---------------------------------------------------------------
 
 # Every instruction is emitted through arm_emit (). The header is
-# included by all of mono/mini, which also brings in the memcpy () and
-# memset () wrappers.
+# included by all of mono/mini, and through mono/utils/mono-context.h
+# by most of the rest of the runtime, which also brings in the
+# memcpy () and memset () wrappers.
 codegen = Path("mono/arch/arm64/arm64-codegen.h")
 edit(
   codegen,
