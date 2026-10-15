@@ -245,7 +245,7 @@ ios_jit_alloc (gsize size)
   pthread_mutex_lock (&ios_jit_mutex);
   if (!mono_ios_jit_rx)
       ios_jit_pool_init ();
-  g_message("trying to access block!")
+  g_message("trying to access block!");
   for (block = ios_jit_free_blocks; block && block->size < size; block = block->next)
       before = block;
   if (block) {
@@ -261,16 +261,16 @@ ios_jit_alloc (gsize size)
           g_free (block);
       }
       else {
-          g_message("block size is not null!")
+          g_message("block size is not null!");
       }
   }
     else {
-        g_message("failed to access block!")
+        g_message("failed to access block!");
     }
   pthread_mutex_unlock (&ios_jit_mutex);
 
   if (!res) {
-      g_message("res is null!")
+      g_message("res is null!");
       //g_error ("The JIT code region (%d MB) is full, set MONO_IOS_JIT_POOL_MB to a larger size.", (int)(mono_ios_jit_size >> 20));
   } else {
       memset (res, 0, size);
