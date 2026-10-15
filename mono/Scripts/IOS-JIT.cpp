@@ -81,8 +81,6 @@ static IosJitBlock *ios_jit_free_blocks;
 /* The sizes of the blocks handed out by ios_jit_malloc (). */
 static GHashTable *ios_jit_malloc_sizes;
 static volatile int ios_jit_brk_skipped;
-/* How many times the region has been set up; should never exceed one. */
-static int ios_jit_pool_init_count;
 
 /*
 * On devices with TXM (iOS 26 and later) a page only becomes executable
@@ -161,46 +159,20 @@ ios_jit_debugger_attached (void)
   return sysctl (mib, 4, &info, &size, NULL, 0) == 0 && (info.kp_proc.p_flag & P_TRACED);
 }
 
-/* The major iOS version, e.g. 18 or 26; 0 if it cannot be read. */
-static int
-ios_major_version (void)
+static gboolean
+ios_jit_is_executable (void *addr)
 {
-  char buf [64] = { 0 };
-  size_t len = sizeof (buf) - 1;
+  vm_address_t start = (vm_address_t)addr;
+  vm_size_t size = 0;
+  vm_region_basic_info_data_64_t info;
+  mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+  mach_port_t object = MACH_PORT_NULL;
 
-  if (sysctlbyname ("kern.osproductversion", buf, &len, NULL, 0) != 0)
-      return 0;
-  return atoi (buf);
-}
-
-/*
-* How many of the SIZE bytes at ADDR are mapped executable, without a gap.
-* All the map entries in the range are checked: the debugger can hand out
-* less than it was asked for, and preparing a region page by page can split
-* it into many entries.
-*/
-static gsize
-ios_jit_executable_size (void *addr, gsize size)
-{
-  vm_address_t pos = (vm_address_t)addr, end = pos + size;
-
-  if (!addr || ((gsize)addr & (mono_pagesize () - 1)) || end < pos)
-      return 0;
-  while (pos < end) {
-      vm_address_t start = pos;
-      vm_size_t len = 0;
-      vm_region_basic_info_data_64_t info;
-      mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
-      mach_port_t object = MACH_PORT_NULL;
-
-      if (vm_region_64 (mach_task_self (), &start, &len, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object) != KERN_SUCCESS)
-          break;
-      /* A gap, or memory which is not executable. */
-      if (start > pos || !(info.protection & VM_PROT_EXECUTE))
-          break;
-      pos = start + len;
-  }
-  return MIN (pos, end) - (vm_address_t)addr;
+  if (!addr || ((gsize)addr & (mono_pagesize () - 1)))
+      return FALSE;
+  if (vm_region_64 (mach_task_self (), &start, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object) != KERN_SUCCESS)
+      return FALSE;
+  return start <= (vm_address_t)addr && (info.protection & VM_PROT_EXECUTE);
 }
 
 /* LOCKING: Assumes ios_jit_mutex is held. */
@@ -209,7 +181,6 @@ ios_jit_pool_init (void)
 {
   const char *env = getenv ("MONO_IOS_JIT_POOL_MB");
   gsize size = (gsize)(env && atoi (env) > 0 ? atoi (env) : IOS_JIT_DEFAULT_POOL_MB) << 20;
-  gsize executable = 0;
   vm_address_t rw = 0;
   vm_prot_t cur_prot, max_prot;
   gboolean from_debugger;
@@ -217,53 +188,23 @@ ios_jit_pool_init (void)
   void *rx = NULL;
   int i;
 
-  g_message ("ios_jit: pool_init entry #%d (rx=%p)", ++ios_jit_pool_init_count, mono_ios_jit_rx);
-
-  /*
-   * JIT enablers attach after the process has started. The whole of mono
-   * init runs on the main thread during app launch, so this has to finish
-   * well inside the ~5s background watchdog; 3s, then fail with a message
-   * instead of blocking until the watchdog kills the process silently.
-   */
+  /* JIT enablers attach after the process has started. */
   for (i = 0; !ios_jit_enabled (); ++i) {
-      if (i == 30)
-          g_error ("JIT is not enabled for this process (CS_DEBUGGED is not set) after 3s, use a JIT enabler such as StikDebug.");
-      if (i && i % 10 == 0)
-          g_message ("ios_jit: still waiting for CS_DEBUGGED (%d)", i);
+      if (i == 150)
+          g_error ("JIT is not enabled for this process (CS_DEBUGGED is not set), use a JIT enabler such as StikDebug.");
       usleep (100 * 1000);
   }
-  g_message ("ios_jit: CS_DEBUGGED set after %d polls, iOS %d, debugger %sattached", i, ios_major_version (), ios_jit_debugger_attached () ? "" : "not ");
+  /* Plain enablers detach right away, the ones running a script stay. */
+  usleep (300 * 1000);
 
-  /*
-   * Only TXM (iOS 26 and later) needs the region to come from the
-   * debugger, through a StikDebug script that services brk #0xf00d.
-   * Before that, mmap below gives executable memory directly, so the
-   * brk is skipped: on those devices the debugger has no brk handler,
-   * and firing brk into the attached debugger just risks a hang.
-   */
-  if (ios_major_version () >= 26) {
-      /* Plain enablers detach right away, the ones running a script stay. */
-      usleep (300 * 1000);
-
-      for (i = 0; i < 3 && !rx && ios_jit_debugger_attached (); ++i) {
-          rx = ios_jit_debugger_request (FALSE, size);
-          executable = ios_jit_executable_size (rx, size);
-          if (!executable) {
-              rx = NULL;
-              usleep (100 * 1000);
-          }
+  for (i = 0; i < 3 && !rx && ios_jit_debugger_attached (); ++i) {
+      rx = ios_jit_debugger_request (FALSE, size);
+      if (!ios_jit_is_executable (rx)) {
+          rx = NULL;
+          usleep (100 * 1000);
       }
   }
   from_debugger = rx != NULL;
-
-  /*
-   * Mapping more than the debugger prepared would also map whatever
-   * follows the region, and writing JIT code into that corrupts it.
-   */
-  if (from_debugger && executable < size) {
-      g_warning ("The debugger prepared %lu KB of JIT code memory at %p, %lu KB were asked for.", (unsigned long)(executable >> 10), rx, (unsigned long)(size >> 10));
-      size = executable;
-  }
 
   if (!rx) {
       /* This is enough where there is no TXM. */
@@ -289,7 +230,7 @@ ios_jit_pool_init (void)
   mono_ios_jit_size = size;
   mono_ios_jit_rx = (unsigned char *)rx;
 
-  g_message ("JIT code region: %lu KB at %p, written through %p, %s", (unsigned long)(size >> 10), rx, (void *)rw, from_debugger ? "prepared by the debugger" : "mapped by the process");
+  g_message ("JIT code region: %d MB at %p, %s", (int)(size >> 20), rx, from_debugger ? "prepared by the debugger" : "mapped by the process");
 }
 
 /* Returns zeroed memory. */
@@ -298,21 +239,14 @@ ios_jit_alloc (gsize size)
 {
   IosJitBlock *block, *before = NULL;
   gpointer res = NULL;
-  gsize asked = size, free_size = 0, largest = 0;
-  int free_blocks = 0;
 
-  /* A negative int converted to gsize must not wrap around to a small size. */
-  size = size < ~(gsize)15 ? (size + 15) & ~(gsize)15 : ~(gsize)15;
+  size = (size + 15) & ~(gsize)15;
 
   pthread_mutex_lock (&ios_jit_mutex);
   if (!mono_ios_jit_rx)
       ios_jit_pool_init ();
-  for (block = ios_jit_free_blocks; block && block->size < size; block = block->next) {
-      free_size += block->size;
-      largest = MAX (largest, block->size);
-      ++free_blocks;
+  for (block = ios_jit_free_blocks; block && block->size < size; block = block->next)
       before = block;
-  }
   if (block) {
       res = (gpointer)block->start;
       block->start += size;
@@ -327,10 +261,8 @@ ios_jit_alloc (gsize size)
   }
   pthread_mutex_unlock (&ios_jit_mutex);
 
-  /* When nothing fit, the loop above went through the whole free list. */
   if (!res)
-      g_error ("Could not allocate %lu bytes of JIT code memory: the %lu KB region at %p has %lu KB free in %d blocks, the largest is %lu bytes. If it is full, set MONO_IOS_JIT_POOL_MB to a larger size.",
-          (unsigned long)asked, (unsigned long)(mono_ios_jit_size >> 10), mono_ios_jit_rx, (unsigned long)(free_size >> 10), free_blocks, (unsigned long)largest);
+      g_error ("The JIT code region (%d MB) is full, set MONO_IOS_JIT_POOL_MB to a larger size.", (int)(mono_ios_jit_size >> 20));
 
   memset (res, 0, size);
   return res;
@@ -340,17 +272,10 @@ static void
 ios_jit_free (gpointer ptr, gsize size)
 {
   IosJitBlock *block, *next, *before = NULL;
-  gsize offset = (gsize)ptr - (gsize)mono_ios_jit_rx;
-
-  size = (size + 15) & ~(gsize)15;
-  /* Anything else would be handed out as JIT code memory later. */
-  g_assert (offset < mono_ios_jit_size && size <= mono_ios_jit_size - offset);
-  if (!size)
-      return;
 
   block = g_new0 (IosJitBlock, 1);
   block->start = (gsize)ptr;
-  block->size = size;
+  block->size = (size + 15) & ~(gsize)15;
 
   pthread_mutex_lock (&ios_jit_mutex);
   for (next = ios_jit_free_blocks; next && next->start < block->start; next = next->next)
@@ -392,18 +317,14 @@ ios_jit_malloc (gsize size)
 static void
 ios_jit_mfree (gpointer ptr)
 {
-  gsize size = 0;
+  gsize size;
 
   pthread_mutex_lock (&ios_jit_mutex);
-  if (ios_jit_malloc_sizes) {
-      size = (gsize)g_hash_table_lookup (ios_jit_malloc_sizes, ptr);
-      g_hash_table_remove (ios_jit_malloc_sizes, ptr);
-  }
+  size = (gsize)g_hash_table_lookup (ios_jit_malloc_sizes, ptr);
+  g_hash_table_remove (ios_jit_malloc_sizes, ptr);
   pthread_mutex_unlock (&ios_jit_mutex);
 
-  /* Not from ios_jit_malloc (), or freed already. */
-  if (size)
-      ios_jit_free (ptr, size);
+  ios_jit_free (ptr, size);
 }
 
 #endif /* MONO_IOS_JIT_IMPLEMENTATION && MONO_IOS_JIT_POOL */
