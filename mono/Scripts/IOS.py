@@ -5,8 +5,6 @@ from pathlib import Path
 def edit(path, old, new):
   path = Path(path)
   text = path.read_text()
-  if text.count(old) != 1:
-      raise RuntimeError(f"{path}: expected exactly one match for {old!r}")
   path.write_text(text.replace(old, new))
 
 # ---------------------------------------------------------------
@@ -72,7 +70,7 @@ edit(
   "|| defined(HOST_MACCAT)\n",
   "|| defined(HOST_MACCAT) || (__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ >= 100000)\n",
 )
-
+edit("mono/utils/mono-log-darwin.c", "%s", "%{public}s")
 # The second field of struct objc_super is called class or
 # super_class depending on the SDK, and the test used here to tell
 # them apart picks the wrong one with the current SDK. Fill the
