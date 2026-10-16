@@ -199,7 +199,7 @@ for reserve in (
     f"table = (void **){call};",
     f"table = (void **)MONO_JIT_W ({call});",
   )
-
+"""
 # The code manager takes its memory from the region instead of mmap ()
 # and dlmalloc.
 codeman = "mono/utils/mono-codeman.c"
@@ -210,6 +210,7 @@ edit(
   "#if defined(TARGET_OSX) || defined(TARGET_IOS)\n"
   "/* So we can use the declaration of pthread_jit_write_protect_np () and, on iOS, of sysctl () */\n",
 )
+"""
 edit(
   codeman,
   "#include <mono/utils/mono-tls.h>\n",
