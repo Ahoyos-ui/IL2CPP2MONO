@@ -1,80 +1,186 @@
 name: Build Unity Mono iOS ARM64
 
+# Builds libmonosgen-2.0 for iOS devices (arm64) as a JIT runtime with
+# SGen and Unity liveness, from the same branch as the Android build.
+#
+# Using the result on a device:
+#   - The app has to be signed with get-task-allow and have JIT enabled
+#     by a debugger-based enabler such as StikDebug (iOS 17.4+). Mono
+#     waits up to 15 s for that when it first needs code memory.
+#   - On devices with TXM (iOS 26 and later), launch the app through
+#     StikDebug with its universal script: Mono asks the debugger for
+#     its code region. Elsewhere it maps the region itself.
+#   - All JIT code lives in one region of 128 MB. Set the environment
+#     variable MONO_IOS_JIT_POOL_MB before starting Mono to resize it.
+
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IOS_VERSION_MIN: "17.4"
 
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 60
 
     steps:
-      - name: Diagnostics
-        run: |
-          echo "===== Xcode ====="
-          ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode"
-          xcode-select -p || true
-          echo "===== workspace before checkout ====="
-          ls -la
-
-      - name: Checkout IL2CPP2MONO
-        uses: actions/checkout@v4
-        with:
-          ref: Ahoyos
-
-      - name: Checkout Unity Mono
+      - name: Check out Unity Mono
         uses: actions/checkout@v4
         with:
           repository: Unity-Technologies/mono
           ref: unity-2022.3-mbe
-          path: unity-mono
+          submodules: recursive
           fetch-depth: 1
-
-      - name: Verify checkouts
+      - name: Check out my repo
+        uses: actions/checkout@v4
+        with:
+          path: my-repo
+      - name: Install build dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          echo "===== root ====="
-          ls -la
-          echo "===== unity-mono ====="
-          ls unity-mono | head -30
-          echo "===== mono/utils ====="
-          ls unity-mono/mono/utils | head -30
+          brew install \
+            autoconf \
+            automake \
+            gettext \
+            libtool \
+            pkg-config
 
-      - name: Select newest Xcode
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Configure Mono for JIT, SGen GC and Unity liveness
+        shell: bash
         run: |
-          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$XCODE_PATH" ]; then
-            echo "No Xcode found"
+          set -e
+
+          cp my-repo/mono/Scripts/IOS-JIT.cpp mono/utils/mono-ios-jit.h
+          
+          python3 my-repo/mono/Scripts/IOS.py
+
+          echo "===== ios.mk device configuration ====="
+          grep -nE 'enable-minimal|icall-tables|lazy-gc|enable-boehm|disable-boehm' \
+            sdks/builds/ios.mk
+
+          echo "===== SGen liveness configuration ====="
+          grep -n -A2 -B1 \
+            'libmonoruntimesgen_la_SOURCES' \
+            mono/metadata/Makefile.am
+
+          echo "===== JIT code memory changes ====="
+          git --no-pager diff --stat
+          git --no-pager diff -- mono/arch/arm64/arm64-codegen.h
+
+      - name: Build Unity Mono ARM64 iOS
+        shell: bash
+        run: |
+          set -o pipefail
+
+          # sdks/builds/Makefile refuses to start below 1024 file
+          # descriptors; the macOS default is 256.
+          ulimit -n 4096
+
+          # IOS_VERSION is left unset on purpose: ios.mk then builds
+          # against the unversioned iPhoneOS.sdk of the selected Xcode.
+          #
+          # The AOT compiler is built along with the JIT and must not
+          # call system (), which the iOS SDK forbids. The simulator
+          # targets of ios.mk, which are JIT runtimes, set the same.
+          #
+          # -k keeps going after an error, so that one run reports every
+          # file that fails to compile instead of only the first one.
+          make -C sdks/builds \
+            ENABLE_IOS=1 \
+            CONFIGURATION=release \
+            XCODE_DIR="$(xcode-select -p)" \
+            IOS_VERSION_MIN="$IOS_VERSION_MIN" \
+            ios-target64_AC_VARS="ac_cv_func_system=no" \
+            -j"$(sysctl -n hw.logicalcpu)" \
+            -k \
+            package-ios-target64 \
+            2>&1 | tee "$GITHUB_WORKSPACE/mono-build.log"
+
+      - name: Show actual build errors
+        if: always()
+        shell: bash
+        run: |
+          echo "===== compiler/build errors ====="
+
+          grep -nEi \
+            'error: |error [A-Z]+[0-9]+|fatal error|Undefined symbols|command not found|No such file|failed' \
+            mono-build.log \
+            || true
+
+          # The same errors with the lines that follow them, then the
+          # targets make gave up on, in a file small enough to pass
+          # around.
+          {
+            grep -nE -A8 \
+              ' error: |Undefined symbols for architecture|duplicate symbol|^ld: [^w]' \
+              mono-build.log \
+              || true
+            echo
+            echo "===== targets make gave up on ====="
+            grep -nF '***' mono-build.log || true
+          } > mono-build-errors.txt
+
+          echo
+          echo "===== last 300 lines ====="
+          tail -n 300 mono-build.log
+
+      - name: Check and show generated artifacts
+        if: success()
+        shell: bash
+        run: |
+          CONFIG_H=sdks/builds/ios-target64-release/config.h
+          OUT=sdks/out/ios-target64-release
+          DYLIB="$OUT/lib/libmonosgen-2.0.dylib"
+
+          echo "===== runtime configuration ====="
+          grep -nE '#define (DISABLED_FEATURES|TARGET_IOS|TARGET_ARM64) ' \
+            "$CONFIG_H" || true
+
+          if grep -nE '#define (DISABLE_JIT|DISABLE_ICALL_TABLES|LAZY_GC_THREAD_CREATION) ' "$CONFIG_H"; then
+            echo "::error::The runtime was not configured as a JIT runtime"
             exit 1
           fi
-          sudo xcode-select -s "$XCODE_PATH"
 
-      - name: Install build dependencies
-        run: brew install autoconf automake libtool pkg-config cmake ninja ldid
+          # libtool records the build prefix as install name. Make the
+          # dylib loadable from an app bundle.
+          install_name_tool -id @rpath/libmonosgen-2.0.dylib "$DYLIB"
 
-      - name: Copy JIT header into Mono tree
-        run: |
-          cp mono/Scripts/IOS-JIT.cpp unity-mono/mono/utils/mono-ios-jit.h
-          ls -la unity-mono/mono/utils/mono-ios-jit.h
+          echo "===== ARM64 artifacts ====="
+          find "$OUT" -type f \
+            \( -name '*.dylib' -o -name '*.a' \) \
+            -print \
+            | sort
 
-      - name: Apply iOS patches
-        run: python3 mono/Scripts/IOS.py unity-mono
+          echo "===== libmonosgen-2.0.dylib ====="
+          lipo -info "$DYLIB"
+          vtool -show-build "$DYLIB"
+          otool -L "$DYLIB"
 
-      - name: Build iOS ARM64 SGen runtime
-        working-directory: unity-mono
-        run: make -C sdks/builds package-ios-target64 ENABLE_IOS=1 CONFIGURATION=release
-
-      - name: Verify JIT enabled
-        working-directory: unity-mono
-        run: |
-          CONFIG=sdks/out/ios-target64-release/include/mono-2.0/mono/metadata/private/config.h
-          test -f "$CONFIG" || { echo "config.h missing"; exit 1; }
-          ! grep -q "define DISABLE_JIT" "$CONFIG" || { echo "JIT disabled"; exit 1; }
-          echo "JIT verification passed."
-
-      - name: Upload runtime
+      - name: Upload ARM64 Mono build
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: unity-mono-2022.3-ios-arm64-sgen
-          path: unity-mono/sdks/out/ios-target64-release/**
-          retention-days: 14
+          path: sdks/out/ios-target64-release/**
+          if-no-files-found: error
+          compression-level: 6
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-mono-build-log
+          path: |
+            mono-build.log
+            mono-build-errors.txt
+            mono-unresolved-symbols.txt
+            sdks/builds/ios-target64-release/config.log
+          if-no-files-found: error
+          compression-level: 6
