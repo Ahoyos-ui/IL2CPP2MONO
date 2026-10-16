@@ -144,7 +144,7 @@ codeman = "mono/utils/mono-codeman.c"
 edit(
   codeman,
   "defined(TARGET_OSX)"
-  "defined(TARGET_OSX) || defined(TARGET_IOS)"
+  "(defined(TARGET_OSX) || defined(TARGET_IOS))"
 )
 """
 # Every instruction is emitted through arm_emit (). The header is
