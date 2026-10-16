@@ -6,7 +6,10 @@ def edit(path, old, new):
   path = Path(path)
   text = path.read_text()
   path.write_text(text.replace(old, new))
-
+def insert(path, new):
+  path = Path(path)
+  text = path.read_text()
+  path.write_text(new+text)
 # ---------------------------------------------------------------
 # Build configuration
 # ---------------------------------------------------------------
@@ -148,6 +151,7 @@ edit(
   """#if defined(TARGET_IOS)
 	if (true) {g_message("processing JIT!");"""
 )
+insert(codeman, "#include <pthread.h>\n")
 """
 # Every instruction is emitted through arm_emit (). The header is
 # included by all of mono/mini, which also brings in the memcpy () and
