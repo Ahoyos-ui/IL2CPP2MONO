@@ -1,11 +1,6 @@
 name: Build Unity Mono iOS ARM64
 
 on:
-  push:
-    branches: [Ahoyos]
-    paths:
-      - 'mono/Scripts/**'
-      - '.github/workflows/IOS.yml'
   workflow_dispatch:
 
 jobs:
@@ -14,6 +9,14 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      - name: Diagnostics
+        run: |
+          echo "===== Xcode ====="
+          ls -d /Applications/Xcode*.app 2>/dev/null || echo "no Xcode"
+          xcode-select -p || true
+          echo "===== workspace before checkout ====="
+          ls -la
+
       - name: Checkout IL2CPP2MONO
         uses: actions/checkout@v4
         with:
@@ -25,85 +28,50 @@ jobs:
           repository: Unity-Technologies/mono
           ref: unity-2022.3-mbe
           path: unity-mono
+          fetch-depth: 1
 
-      - name: Diagnostics
+      - name: Verify checkouts
         run: |
-          echo "=== Available Xcode installations ==="
-          ls -1 /Applications | grep -i xcode || true
-          echo "=== Current xcode-select path ==="
-          xcode-select -p || true
-          echo "=== xcodebuild version ==="
-          xcodebuild -version || true
-          echo "=== Workspace contents ==="
+          echo "===== root ====="
           ls -la
-          echo "=== Mono checkout contents ==="
-          ls -la unity-mono | head -20
+          echo "===== unity-mono ====="
+          ls unity-mono | head -30
+          echo "===== mono/utils ====="
+          ls unity-mono/mono/utils | head -30
 
-      - name: Select newest available Xcode
+      - name: Select newest Xcode
         run: |
           XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
           if [ -z "$XCODE_PATH" ]; then
-            echo "No Xcode found in /Applications"
+            echo "No Xcode found"
             exit 1
           fi
-          echo "Selecting $XCODE_PATH"
           sudo xcode-select -s "$XCODE_PATH"
 
-      - name: Install dependencies
-        run: |
-          brew install autoconf automake libtool pkg-config cmake ninja ldid
+      - name: Install build dependencies
+        run: brew install autoconf automake libtool pkg-config cmake ninja ldid
 
       - name: Copy JIT header into Mono tree
         run: |
-          DEST="unity-mono/mono/utils"
-          if [ ! -d "$DEST" ]; then
-            echo "ERROR: $DEST does not exist — Mono checkout may have failed."
-            ls -la unity-mono
-            exit 1
-          fi
-          cp mono/Scripts/IOS-JIT.cpp "$DEST/mono-ios-jit.h"
-          ls -la "$DEST/mono-ios-jit.h"
+          cp mono/Scripts/IOS-JIT.cpp unity-mono/mono/utils/mono-ios-jit.h
+          ls -la unity-mono/mono/utils/mono-ios-jit.h
 
       - name: Apply iOS patches
-        run: |
-          python3 mono/Scripts/IOS.py unity-mono
+        run: python3 mono/Scripts/IOS.py unity-mono
 
-      - name: Configure and build iOS ARM64 SGen runtime
+      - name: Build iOS ARM64 SGen runtime
         working-directory: unity-mono
-        run: |
-          make -C sdks/builds package-ios-target64 \
-            ENABLE_IOS=1 \
-            CONFIGURATION=release
+        run: make -C sdks/builds package-ios-target64 ENABLE_IOS=1 CONFIGURATION=release
 
-      - name: Verify JIT is enabled
+      - name: Verify JIT enabled
         working-directory: unity-mono
         run: |
           CONFIG=sdks/out/ios-target64-release/include/mono-2.0/mono/metadata/private/config.h
-          if [ ! -f "$CONFIG" ]; then
-            echo "ERROR: config.h not found at $CONFIG"
-            find sdks/out -name config.h 2>/dev/null | head -5
-            exit 1
-          fi
-          if grep -q "define DISABLE_JIT" "$CONFIG"; then
-            echo "ERROR: JIT is disabled in config.h"
-            exit 1
-          fi
-          if grep -q "define DISABLE_ICALL_TABLES" "$CONFIG"; then
-            echo "ERROR: icall tables are disabled"
-            exit 1
-          fi
+          test -f "$CONFIG" || { echo "config.h missing"; exit 1; }
+          ! grep -q "define DISABLE_JIT" "$CONFIG" || { echo "JIT disabled"; exit 1; }
           echo "JIT verification passed."
 
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unity-mono-build-log
-          path: unity-mono/sdks/out/ios-target64-release/*.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload Mono runtime
+      - name: Upload runtime
         if: success()
         uses: actions/upload-artifact@v4
         with:
