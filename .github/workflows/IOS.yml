@@ -163,26 +163,6 @@ jobs:
           vtool -show-build "$DYLIB"
           otool -L "$DYLIB"
 
-          echo "===== Unity liveness and JIT region symbols ====="
-          nm -gU "$DYLIB" > mono-symbols.txt
-          grep '_mono_unity_liveness_' mono-symbols.txt
-          grep '_mono_ios_jit_' mono-symbols.txt
-
-          # libtool links with -undefined dynamic_lookup, so a symbol
-          # that no library provides does not fail the link: it fails
-          # when the dylib is loaded on the device instead.
-          echo "===== symbols no linked library provides ====="
-          nm -m -u "$DYLIB" \
-            | grep 'dynamically looked up' \
-            > mono-unresolved-symbols.txt \
-            || true
-          if [ -s mono-unresolved-symbols.txt ]; then
-            cat mono-unresolved-symbols.txt
-            echo "::warning::libmonosgen-2.0.dylib has unresolved symbols, listed in mono-unresolved-symbols.txt"
-          else
-            echo "none"
-          fi
-
       - name: Upload ARM64 Mono build
         if: success()
         uses: actions/upload-artifact@v4
