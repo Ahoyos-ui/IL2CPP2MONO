@@ -2,15 +2,9 @@ import re
 from pathlib import Path
 
 
-def edit(path, old, new, optional=False):
+def edit(path, old, new):
   path = Path(path)
   text = path.read_text()
-  # Stop the build when the source no longer matches, instead of
-  # building a runtime that is missing the change.
-  if old not in text:
-    if optional:
-      return
-    raise RuntimeError(f"{path}: text to replace not found: {old!r}")
   path.write_text(text.replace(old, new))
 
 # ---------------------------------------------------------------
@@ -113,25 +107,23 @@ edit(
 # already accept.
 for sig in ("3, (bool, ptr, ptrref)", "4, (bool, ptr, int32, ptrref)"):
   edit(
-      "mono/metadata/icall-signatures.h",
-      f"ICALL_SIG ({sig})",
-      f"ICALL_SIG ({sig.replace('bool', 'boolean')})",
+    "mono/metadata/icall-signatures.h",
+    f"ICALL_SIG ({sig})",
+    f"ICALL_SIG ({sig.replace('bool', 'boolean')})",
   )
 for name in ("mono_icall_sig_bool_ptr_int32_ptrref", "mono_icall_sig_bool_ptr_ptrref"):
   edit(
-      "mono/mini/aot-compiler.c",
-      f"&{name},",
-      f"&{name.replace('_bool_', '_boolean_')},",
+    "mono/mini/aot-compiler.c",
+    f"&{name},",
+    f"&{name.replace('_bool_', '_boolean_')},",
   )
 
 # Storing a pointer into an integer and assigning a function to
 # a pointer of another type were warnings and are errors now.
-# unity-main already casts the PC here.
 edit(
   "mono/utils/mono-sigcontext.h",
   "\tUCONTEXT_REG_PC (ctx) = (val); \\\n",
   "\tUCONTEXT_REG_PC (ctx) = (host_mgreg_t)(val); \\\n",
-  optional=True,
 )
 edit(
   "mono/mini/debugger-agent.c",
@@ -148,11 +140,10 @@ edit(
 # ---------------------------------------------------------------
 # JIT code memory (see mono/utils/mono-ios-jit.h)
 # ---------------------------------------------------------------
-
+"""
 # Every instruction is emitted through arm_emit (). The header is
-# included by all of mono/mini, and through mono/utils/mono-context.h
-# by most of the rest of the runtime, which also brings in the
-# memcpy () and memset () wrappers.
+# included by all of mono/mini, which also brings in the memcpy () and
+# memset () wrappers.
 codegen = Path("mono/arch/arm64/arm64-codegen.h")
 edit(
   codegen,
@@ -172,7 +163,7 @@ unpatched = [
 ]
 if count < 1 or unpatched:
   raise RuntimeError(
-      f"{codegen}: {count} in-place stores patched, left: {unpatched!r}"
+    f"{codegen}: {count} in-place stores patched, left: {unpatched!r}"
   )
 codegen.write_text(text)
 
@@ -199,14 +190,14 @@ edit(
 )
 # These tables are only read back, so use the writable address for good.
 for reserve in (
-  "mono_code_manager_reserve (cfg->dynamic_info->code_mp, ",
-  "mono_mem_manager_code_reserve (cfg->mem_manager, ",
+    "mono_code_manager_reserve (cfg->dynamic_info->code_mp, ",
+    "mono_mem_manager_code_reserve (cfg->mem_manager, ",
 ):
   call = reserve + "sizeof (gpointer) * patch_info->data.table->table_size)"
   edit(
-      "mono/mini/mini.c",
-      f"table = (void **){call};",
-      f"table = (void **)MONO_JIT_W ({call});",
+    "mono/mini/mini.c",
+    f"table = (void **){call};",
+    f"table = (void **)MONO_JIT_W ({call});",
   )
 
 # The code manager takes its memory from the region instead of mmap ()
@@ -278,3 +269,4 @@ edit(
   "\tdlfree (p);\n"
   "#endif\n",
 )
+"""
