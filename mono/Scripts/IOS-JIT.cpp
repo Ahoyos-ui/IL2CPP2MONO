@@ -160,7 +160,7 @@ ios_jit_debugger_attached (void)
 }
 
 static gboolean
-ios_jit_is_executable (void *addr)
+ios_jit_is_executable (void *addr, gsize requested_size)
 {
   vm_address_t start = (vm_address_t)addr;
   vm_size_t size = 0;
@@ -172,7 +172,38 @@ ios_jit_is_executable (void *addr)
       return FALSE;
   if (vm_region_64 (mach_task_self (), &start, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object) != KERN_SUCCESS)
       return FALSE;
-  return start <= (vm_address_t)addr && (info.protection & VM_PROT_EXECUTE);
+  if (object != MACH_PORT_NULL)
+      mach_port_deallocate (mach_task_self (), object);
+  return start == (vm_address_t)addr && size >= requested_size && (info.protection & VM_PROT_EXECUTE);
+}
+
+/*
+ * Map the debugger/process supplied RX region a second time for writes.  Do
+ * not ever change the RX mapping's protection: on TXM devices that makes the
+ * generated code non-executable.  vm_remap gives the writer a distinct
+ * mapping of the same physical pages instead.
+ */
+static void *
+ios_jit_create_writable_alias (void *rx, gsize size)
+{
+  vm_address_t rw = 0;
+  vm_prot_t current_protection, maximum_protection;
+  kern_return_t kr;
+
+  kr = vm_remap (mach_task_self (), &rw, size, 0, VM_FLAGS_ANYWHERE,
+      mach_task_self (), (vm_address_t)rx, FALSE, &current_protection,
+      &maximum_protection, VM_INHERIT_NONE);
+  if (kr != KERN_SUCCESS)
+      return NULL;
+
+  kr = vm_protect (mach_task_self (), rw, size, FALSE,
+      VM_PROT_READ | VM_PROT_WRITE);
+  if (kr != KERN_SUCCESS) {
+      vm_deallocate (mach_task_self (), rw, size);
+      return NULL;
+  }
+
+  return (void *)rw;
 }
 
 /* LOCKING: Assumes ios_jit_mutex is held. */
@@ -181,8 +212,7 @@ ios_jit_pool_init (void)
 {
   const char *env = getenv ("MONO_IOS_JIT_POOL_MB");
   gsize size = (gsize)(env && atoi (env) > 0 ? atoi (env) : IOS_JIT_DEFAULT_POOL_MB) << 20;
-  vm_address_t rw = 0;
-  vm_prot_t cur_prot, max_prot;
+  vm_address_t rw;
   gboolean from_debugger;
   IosJitBlock *block;
   void *rx = NULL;
@@ -199,7 +229,7 @@ ios_jit_pool_init (void)
 
   for (i = 0; i < 3 && !rx && ios_jit_debugger_attached (); ++i) {
       rx = ios_jit_debugger_request (FALSE, size);
-      if (!ios_jit_is_executable (rx)) {
+      if (!ios_jit_is_executable (rx, size)) {
           rx = NULL;
           usleep (100 * 1000);
       }
@@ -213,8 +243,8 @@ ios_jit_pool_init (void)
           g_error ("Could not map the JIT code region: %s", strerror (errno));
   }
 
-  if (vm_remap (mach_task_self (), &rw, size, 0, VM_FLAGS_ANYWHERE, mach_task_self (), (vm_address_t)rx, FALSE, &cur_prot, &max_prot, VM_INHERIT_NONE) != KERN_SUCCESS ||
-      vm_protect (mach_task_self (), rw, size, FALSE, VM_PROT_READ | VM_PROT_WRITE) != KERN_SUCCESS)
+  rw = (vm_address_t)ios_jit_create_writable_alias (rx, size);
+  if (!rw)
       g_error ("Could not create the writable mapping of the JIT code region.");
 
   /* Pages cannot be prepared after this, the region never grows. */
@@ -240,17 +270,19 @@ ios_jit_alloc (gsize size)
   IosJitBlock *block, *before = NULL;
   gpointer res = NULL;
 
+  if (size > G_MAXSIZE - 15)
+      g_error ("JIT code allocation is too large.");
+  if (!size)
+      size = 1;
   size = (size + 15) & ~(gsize)15;
 
   pthread_mutex_lock (&ios_jit_mutex);
   if (!mono_ios_jit_rx)
       ios_jit_pool_init ();
-  g_message("trying to access block!");
   for (block = ios_jit_free_blocks; block && block->size < size; block = block->next)
       before = block;
   if (block) {
       res = (gpointer)block->start;
-      g_message("res: %p", res);
       block->start += size;
       block->size -= size;
       if (!block->size) {
@@ -260,21 +292,12 @@ ios_jit_alloc (gsize size)
               ios_jit_free_blocks = block->next;
           g_free (block);
       }
-      else {
-          g_message("block size is not null!");
-      }
   }
-    else {
-        g_message("failed to access block!");
-    }
   pthread_mutex_unlock (&ios_jit_mutex);
 
-  if (!res) {
-      g_message("res is null!");
-      //g_error ("The JIT code region (%d MB) is full, set MONO_IOS_JIT_POOL_MB to a larger size.", (int)(mono_ios_jit_size >> 20));
-  } else {
-      memset (res, 0, size);
-  }
+  if (!res)
+      g_error ("The JIT code region (%d MB) is full, set MONO_IOS_JIT_POOL_MB to a larger size.", (int)(mono_ios_jit_size >> 20));
+  memset (res, 0, size);
   return res;
 }
 
@@ -317,7 +340,7 @@ ios_jit_malloc (gsize size)
 
   pthread_mutex_lock (&ios_jit_mutex);
   if (!ios_jit_malloc_sizes)
-      ios_jit_malloc_sizes = g_hash_table_new (NULL, NULL);
+      ios_jit_malloc_sizes = g_hash_table_new (g_direct_hash, g_direct_equal);
   g_hash_table_insert (ios_jit_malloc_sizes, res, (gpointer)size);
   pthread_mutex_unlock (&ios_jit_mutex);
 
@@ -329,7 +352,15 @@ ios_jit_mfree (gpointer ptr)
 {
   gsize size;
 
+  if (!ptr)
+      return;
+
   pthread_mutex_lock (&ios_jit_mutex);
+  if (!ios_jit_malloc_sizes || !g_hash_table_lookup_extended (ios_jit_malloc_sizes, ptr, NULL, NULL)) {
+      pthread_mutex_unlock (&ios_jit_mutex);
+      g_error ("Attempted to free JIT memory that was not allocated by the JIT pool.");
+      return;
+  }
   size = (gsize)g_hash_table_lookup (ios_jit_malloc_sizes, ptr);
   g_hash_table_remove (ios_jit_malloc_sizes, ptr);
   pthread_mutex_unlock (&ios_jit_mutex);

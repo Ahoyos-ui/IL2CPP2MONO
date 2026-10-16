@@ -5,11 +5,10 @@ from pathlib import Path
 def edit(path, old, new):
   path = Path(path)
   text = path.read_text()
+  if old not in text:
+    raise RuntimeError(f"{path}: expected source fragment was not found")
   path.write_text(text.replace(old, new))
-def insert(path, new):
-  path = Path(path)
-  text = path.read_text()
-  path.write_text(new+text)
+
 # ---------------------------------------------------------------
 # Build configuration
 # ---------------------------------------------------------------
@@ -144,15 +143,7 @@ edit(
 # JIT code memory (see mono/utils/mono-ios-jit.h)
 # ---------------------------------------------------------------
 codeman = "mono/utils/mono-codeman.c"
-edit(
-  codeman,
-  """#if defined(HAVE_PTHREAD_JIT_WRITE_PROTECT_NP) && defined(TARGET_OSX)
-	if (__builtin_available (macOS 11, *)) {""",
-  """#if defined(TARGET_IOS)
-	if (true) {g_message("processing JIT!");"""
-)
-insert(codeman, "#include <pthread.h>\n")
-"""
+
 # Every instruction is emitted through arm_emit (). The header is
 # included by all of mono/mini, which also brings in the memcpy () and
 # memset () wrappers.
@@ -201,16 +192,21 @@ edit(
   "\t\t\t((gpointer *)MONO_JIT_W (jump_table)) [i] = code + ",
 )
 # These tables are only read back, so use the writable address for good.
-for reserve in (
-    "mono_code_manager_reserve (cfg->dynamic_info->code_mp, ",
-    "mono_mem_manager_code_reserve (cfg->mem_manager, ",
-):
-  call = reserve + "sizeof (gpointer) * patch_info->data.table->table_size)"
-  edit(
-    "mono/mini/mini.c",
-    f"table = (void **){call};",
-    f"table = (void **)MONO_JIT_W ({call});",
-  )
+# The Unity source wraps the argument after the multiplication sign; match
+# whitespace rather than assuming one particular line layout.
+mini = Path("mono/mini/mini.c")
+mini_text = mini.read_text()
+table_reserve = re.compile(
+  r"(table\s*=\s*\(void \*\*\))"
+  r"((?:mono_code_manager_reserve|mono_mem_manager_code_reserve)\s*\(\s*"
+  r"(?:cfg->dynamic_info->code_mp|cfg->mem_manager)\s*,\s*"
+  r"sizeof\s*\(gpointer\)\s*\*\s*"
+  r"patch_info->data\.table->table_size\s*\))\s*;"
+)
+mini_text, table_count = table_reserve.subn(r"\1MONO_JIT_W (\2);", mini_text)
+if table_count != 2:
+  raise RuntimeError(f"{mini}: expected to patch 2 jump tables, patched {table_count}")
+mini.write_text(mini_text)
 edit(
   codeman,
   "#include <mono/utils/mono-tls.h>\n",
@@ -270,4 +266,3 @@ edit(
   "\tdlfree (p);\n"
   "#endif\n",
 )
-"""
