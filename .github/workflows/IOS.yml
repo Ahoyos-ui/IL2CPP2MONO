@@ -26,8 +26,28 @@ jobs:
           ref: unity-2022.3-mbe
           path: unity-mono
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app
+      - name: Diagnostics
+        run: |
+          echo "=== Available Xcode installations ==="
+          ls -1 /Applications | grep -i xcode || true
+          echo "=== Current xcode-select path ==="
+          xcode-select -p || true
+          echo "=== xcodebuild version ==="
+          xcodebuild -version || true
+          echo "=== Workspace contents ==="
+          ls -la
+          echo "=== Mono checkout contents ==="
+          ls -la unity-mono | head -20
+
+      - name: Select newest available Xcode
+        run: |
+          XCODE_PATH=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE_PATH" ]; then
+            echo "No Xcode found in /Applications"
+            exit 1
+          fi
+          echo "Selecting $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH"
 
       - name: Install dependencies
         run: |
@@ -35,7 +55,14 @@ jobs:
 
       - name: Copy JIT header into Mono tree
         run: |
-          cp mono/Scripts/IOS-JIT.cpp unity-mono/mono/utils/mono-ios-jit.h
+          DEST="unity-mono/mono/utils"
+          if [ ! -d "$DEST" ]; then
+            echo "ERROR: $DEST does not exist — Mono checkout may have failed."
+            ls -la unity-mono
+            exit 1
+          fi
+          cp mono/Scripts/IOS-JIT.cpp "$DEST/mono-ios-jit.h"
+          ls -la "$DEST/mono-ios-jit.h"
 
       - name: Apply iOS patches
         run: |
@@ -52,6 +79,11 @@ jobs:
         working-directory: unity-mono
         run: |
           CONFIG=sdks/out/ios-target64-release/include/mono-2.0/mono/metadata/private/config.h
+          if [ ! -f "$CONFIG" ]; then
+            echo "ERROR: config.h not found at $CONFIG"
+            find sdks/out -name config.h 2>/dev/null | head -5
+            exit 1
+          fi
           if grep -q "define DISABLE_JIT" "$CONFIG"; then
             echo "ERROR: JIT is disabled in config.h"
             exit 1
@@ -72,6 +104,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Mono runtime
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: unity-mono-2022.3-ios-arm64-sgen
