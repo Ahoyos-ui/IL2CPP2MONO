@@ -270,7 +270,7 @@ ios_jit_alloc (gsize size)
   IosJitBlock *block, *before = NULL;
   gpointer res = NULL;
 
-  if (size > G_MAXSIZE - 15)
+  if (size > ~(gsize)0 - 15)
       g_error ("JIT code allocation is too large.");
   if (!size)
       size = 1;
