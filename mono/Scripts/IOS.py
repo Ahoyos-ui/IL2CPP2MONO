@@ -140,6 +140,12 @@ edit(
 # ---------------------------------------------------------------
 # JIT code memory (see mono/utils/mono-ios-jit.h)
 # ---------------------------------------------------------------
+codeman = "mono/utils/mono-codeman.c"
+edit(
+  codeman,
+  "defined(TARGET_OSX)"
+  "defined(TARGET_OSX) || defined(TARGET_IOS)"
+)
 """
 # Every instruction is emitted through arm_emit (). The header is
 # included by all of mono/mini, which also brings in the memcpy () and
@@ -199,18 +205,6 @@ for reserve in (
     f"table = (void **){call};",
     f"table = (void **)MONO_JIT_W ({call});",
   )
-"""
-# The code manager takes its memory from the region instead of mmap ()
-# and dlmalloc.
-codeman = "mono/utils/mono-codeman.c"
-edit(
-  codeman,
-  "#if defined(TARGET_OSX)\n"
-  "/* So we can use the declaration of pthread_jit_write_protect_np () */\n",
-  "#if defined(TARGET_OSX) || defined(TARGET_IOS)\n"
-  "/* So we can use the declaration of pthread_jit_write_protect_np () and, on iOS, of sysctl () */\n",
-)
-"""
 edit(
   codeman,
   "#include <mono/utils/mono-tls.h>\n",
