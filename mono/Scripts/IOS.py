@@ -143,8 +143,10 @@ edit(
 codeman = "mono/utils/mono-codeman.c"
 edit(
   codeman,
-  "defined(TARGET_OSX)"
-  "(defined(TARGET_OSX) || defined(TARGET_IOS))"
+  """#if defined(HAVE_PTHREAD_JIT_WRITE_PROTECT_NP) && defined(TARGET_OSX)
+	if (__builtin_available (macOS 11, *)) {""",
+  """#if defined(TARGET_IOS)
+	if (true) {g_message("processing JIT!");"""
 )
 """
 # Every instruction is emitted through arm_emit (). The header is
